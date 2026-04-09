@@ -40,18 +40,23 @@ jobs:
         run: find app/build/outputs -name "*.apk" 2>/dev/null || echo "No APK files found"
 
       - name: Sign APK for Play Store (if keystore provided)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          jarsigner -verbose             -sigalg SHA256withRSA             -digestalg SHA-256             -keystore app/release.keystore             -storepass "${{ secrets.KEYSTORE_PASSWORD }}"             -keypass "${{ secrets.KEY_PASSWORD }}"             "$APK"             "${{ secrets.KEY_ALIAS }}"
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$APK" app/build/outputs/apk/debug/app-signed.apk || true
-          echo "APK signed and zipaligned!"
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No keystore configured — skipping signing (debug APK only)"
+            exit 0
+          fi
+          echo "Signing APK..."
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          jarsigner -verbose             -sigalg SHA256withRSA             -digestalg SHA-256             -keystore app/release.keystore             -storepass "$KEYSTORE_PASSWORD"             -keypass "$KEY_PASSWORD"             "$APK"             "$KEY_ALIAS"
+          BUILD_TOOLS=$(ls -1 "$ANDROID_HOME/build-tools/" | tail -1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -v 4 "$APK" app/build/outputs/apk/debug/app-signed.apk || true
+          echo "APK signed and zipaligned!"
 
       - name: Save APK to repository
         run: |
